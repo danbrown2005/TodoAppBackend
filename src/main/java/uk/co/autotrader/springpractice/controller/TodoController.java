@@ -1,106 +1,73 @@
 package uk.co.autotrader.springpractice.controller;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uk.co.autotrader.springpractice.domain.CreateTodoItemRequest;
-import uk.co.autotrader.springpractice.domain.TodoItem;
-import uk.co.autotrader.springpractice.service.JwtTokenVerificationService;
 import uk.co.autotrader.springpractice.service.TodoService;
-import uk.co.autotrader.springpractice.service.UserService;
-
-import java.util.List;
-
-// TODO ADD PROPER HTTP RETURN TYPES
 
 @RestController
+@RequestMapping("/todo")
 public class TodoController {
 
     private final TodoService todoService;
-    private final UserService userService;
-    private final JwtTokenVerificationService jwtService;
 
-    public TodoController(TodoService todoService, UserService userService, JwtTokenVerificationService jwtService) {
+    public TodoController(TodoService todoService) {
         this.todoService = todoService;
-        this.userService = userService;
-        this.jwtService = jwtService;
     }
 
-    // updated
-    @GetMapping(value = "/todo/{id}")
-    public TodoItem getById(@PathVariable("id") int id, @RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            return todoService.getByID(jwtService.getUsername(token), id);
-        }
-        return null;
+    @GetMapping()
+    public ResponseEntity<?> getAll(@RequestAttribute("username") String username) {
+        return todoService.getAll(username);
     }
 
-    // updated
-    @GetMapping(value = "/todo")
-    public List<TodoItem> getAll(@RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            return todoService.getAll(jwtService.getUsername(token));
-        }
-        return null;
+    @GetMapping(value = "/{id}")
+    public ResponseEntity<?> getByID(@RequestAttribute("username") String username, @PathVariable("id") int id) {
+            return todoService.getByID(username, id);
     }
 
-    @GetMapping(value = "/todo/overdue")
-    public List<TodoItem> getOverdue(@RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            return userService.getOverdueTasks(jwtService.getUsername(token));
-        }
-        return null;
+    @GetMapping(value = "/overdue")
+    public ResponseEntity<?> getOverdue(@RequestAttribute("username") String username) {
+            return todoService.getOverdue(username);
     }
 
-    @GetMapping(value = "/todo/upcoming")
-    public List<TodoItem> getUpcoming(@RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            return userService.getUpcomingTasks(jwtService.getUsername(token));
-        }
-        return null;
+    @GetMapping(value = "/upcoming")
+    public ResponseEntity<?> getUpcoming(@RequestAttribute("username") String username) {
+            return todoService.getUpcoming(username);
     }
 
-    // updated
-    @PostMapping(value = "/todo")
-    public TodoItem add(@RequestBody CreateTodoItemRequest todo, @RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            TodoItem s =  todoService.add(jwtService.getUsername(token), todo);
-            System.out.println(s);
-            return s;
-        }
-        return null;
+    @GetMapping(value="/progress")
+    public ResponseEntity<?> getProgress(@RequestAttribute("username") String username){
+            return todoService.getProgress(username);
     }
 
-    @PostMapping(value = "/todo/complete/{id}")
-    public void completeTodo(@PathVariable("id") int id, @RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            todoService.completeTodo(jwtService.getUsername(token), id);
-        }
+    @GetMapping(value="/completed")
+    public ResponseEntity<?> getCompletedCount(@RequestAttribute("username") String username){
+            return todoService.getCompletedCount(username);
     }
 
-    //updated
-    @PutMapping(value = "/todo/{id}")
-    public TodoItem put(@RequestBody CreateTodoItemRequest todo, @PathVariable("id") int id, @RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            return todoService.update(jwtService.getUsername(token), todo, id);
-        }
-        return null;
+    @PostMapping()
+    public ResponseEntity<?> add(@RequestBody CreateTodoItemRequest todo, @RequestAttribute("username") String username) {
+            return todoService.add(username, todo);
     }
 
-    //updated
-    @DeleteMapping(value = "/todo/{id}")
-    public boolean deleteById(@PathVariable("id") int id, @RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            return todoService.deleteById(jwtService.getUsername(token), id);
-        }
-        return false;
+    @PostMapping(value = "/complete/{id}")
+    public ResponseEntity<?> complete(@PathVariable("id") int id, @RequestAttribute("username") String username) {
+            return todoService.complete(username, id);
     }
 
-    //updated
-    @DeleteMapping(value = "/todo")
-    public boolean deleteAll(@RequestHeader("authorization") String token) {
-        if (jwtService.verifyToken(token)) {
-            return todoService.deleteAll(jwtService.getUsername(token));
+    @PutMapping(value = "/{id}")
+    public ResponseEntity<?> update(@RequestBody CreateTodoItemRequest todo, @PathVariable("id") int id,@RequestAttribute("username") String username) {
+            return todoService.update(username, todo, id);
         }
-        return false;
+
+    @DeleteMapping(value = "/{id}")
+    public ResponseEntity<?> deleteById(@PathVariable("id") int id, @RequestAttribute("username") String username) {
+            return todoService.deleteById(username, id);
+    }
+
+    @DeleteMapping()
+    public ResponseEntity<?> deleteAll(@RequestAttribute("username") String username) {
+            return todoService.deleteAll(username);
     }
 
 }

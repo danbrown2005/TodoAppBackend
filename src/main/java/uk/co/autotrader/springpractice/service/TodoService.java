@@ -1,84 +1,111 @@
 package uk.co.autotrader.springpractice.service;
 
-import uk.co.autotrader.springpractice.auth.Encryptor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import net.minidev.json.JSONObject;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import uk.co.autotrader.springpractice.domain.CreateTodoItemRequest;
 import uk.co.autotrader.springpractice.domain.TodoItem;
 import uk.co.autotrader.springpractice.repository.TodoRepository;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 @Service
 public class TodoService {
-    private final Encryptor encryptor;
-    private final UserService userService;
+
     private final TodoRepository repository;
+    private final AuthService authService;
 
-    public TodoService(TodoRepository repository, UserService userService, Encryptor encryptor) {
+    public TodoService(TodoRepository repository, AuthService authService) {
         this.repository = repository;
-        this.encryptor = encryptor;
-        this.userService = userService;
+        this.authService = authService;
     }
 
-    public TodoItem getByID(String username, int id) {
-        if (repository.userExists(username)) {
-            TodoItem encryptedTodoItem =  repository.getById(username, id);
-            return new TodoItem(encryptedTodoItem.id(), encryptor.decrypt(encryptedTodoItem.content()), encryptedTodoItem.dueDate());
+
+    public ResponseEntity<?> getByID(String username, int id) {
+        TodoItem todoItem = repository.getById(username, id);
+        if (todoItem != null) {
+            return new ResponseEntity<>(new TodoItem(id, authService.decrypt(todoItem.content()), todoItem.dueDate()), HttpStatus.OK);
         }
-        return new TodoItem(id, "Invalid username", LocalDate.now());
+        return new ResponseEntity<>(Messages.TODO_ITEM_NOT_FOUND.getJsonValue(), HttpStatus.NOT_FOUND);
+
     }
 
-    public List<TodoItem> getAll(String username) {
-        if (repository.userExists(username)) {
-            List<TodoItem> todoItems = repository.getAll(username);
-            List<TodoItem> unencryptedTodoItems = new ArrayList<>();
-            for (TodoItem todoItem : todoItems){
-                unencryptedTodoItems.add(new TodoItem(todoItem.id(), encryptor.decrypt(todoItem.content()), todoItem.dueDate()));
-            }
-            return unencryptedTodoItems;
+    public ResponseEntity<?> getAll(String username) {
+        return ResponseEntity.status(HttpStatus.OK).body(repository.getAll(username)
+                .stream()
+                .map(todoItem ->
+                        new TodoItem(todoItem.id(), authService.decrypt(todoItem.content()), todoItem.dueDate()))
+                .toList());
+    }
+
+    public ResponseEntity<?> deleteById(String username, int id) {
+        repository.deleteById(username, id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).body(Messages.SUCCESSFULLY_DELETED_TODO_ITEM.getJsonValue());
+    }
+
+    public ResponseEntity<?> deleteAll(String username) {
+        repository.deleteAll(username);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).body(Messages.SUCCESSFULLY_DELETED_TODO_ITEM.getJsonValue());
+    }
+
+    public ResponseEntity<?> add(String username, CreateTodoItemRequest todoItem) {
+
+        if (todoItem.dueDate() != null && !todoItem.content().matches("-?\\d+(\\.\\d+)?") && todoItem.content().length() > 0) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(new TodoItem(repository
+                    .add(username, new CreateTodoItemRequest
+                            (authService.encrypt(todoItem.content()), todoItem.dueDate())), todoItem.content(), todoItem.dueDate()));
+
         }
-        return Collections.emptyList();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Messages.INVALID_FIELDS_TODO_ITEM_REQUEST.getJsonValue());
     }
 
-    public boolean deleteById(String username, int id) {
-        if (repository.userExists(username)) {
-            return repository.deleteById(username, id);
-        }
-        return false;
+    public ResponseEntity<?> update(String username, CreateTodoItemRequest todoItem, int id) {
+        repository.update(username, new CreateTodoItemRequest(authService.encrypt(todoItem.content()), todoItem.dueDate()), id);
+        return ResponseEntity.status(HttpStatus.OK).body(new TodoItem(id, todoItem.content(), todoItem.dueDate()));
     }
 
-    public boolean deleteAll(String username) {
-        if (repository.userExists(username)) {
-            return repository.deleteAll(username);
-        }
-        return false;
+    public ResponseEntity<?> complete(String username, int id) {
+        repository.completeTodo(id, username);
+        return ResponseEntity.status(HttpStatus.OK).body(Messages.SUCCESSFULLY_COMPLETED_TODO_ITEM.getJsonValue());
     }
 
-    public TodoItem add(String username, CreateTodoItemRequest todoItem) {
-        CreateTodoItemRequest encryptedTodoItem = new CreateTodoItemRequest(encryptor.encrypt(todoItem.content()), todoItem.dueDate());
-        if (repository.userExists(username) && todoItem.dueDate() != null) {
-            if (!todoItem.content().matches("-?\\d+(\\.\\d+)?") && todoItem.content().length() > 0) {
-                TodoItem encryptedTodo = repository.add(username, encryptedTodoItem);
-                return new TodoItem(encryptedTodo.id(), encryptor.decrypt(encryptedTodo.content()), encryptedTodo.dueDate());
-            }
-        }
-        return new TodoItem(0, "invalid", todoItem.dueDate());
+    public ResponseEntity<?> getOverdue(String username) {
+        List<TodoItem> overdue = authService.decryptTodoList(repository.getAll(username))
+                .stream().limit(3).filter(todoItem -> todoItem.dueDate().isBefore(LocalDate.now())).toList();
+        return ResponseEntity.status(HttpStatus.OK).body(overdue);
     }
 
-    public TodoItem update(String username, CreateTodoItemRequest todoItem, int id) {
-        CreateTodoItemRequest encryptedTodoItem = new CreateTodoItemRequest(encryptor.encrypt(todoItem.content()), todoItem.dueDate());
-        if (repository.userExists(username)) {
-            TodoItem encryptedTodo = repository.update(username, encryptedTodoItem, id);
-            return new TodoItem(encryptedTodo.id(), encryptor.decrypt(encryptedTodo.content()), encryptedTodo.dueDate());
-        }
-        return new TodoItem(0, "Invalid username", todoItem.dueDate());
+    public ResponseEntity<?> getUpcoming(String username) {
+        List<TodoItem> upcoming = authService.decryptTodoList(repository.getAll(username))
+                .stream().limit(3)
+                .filter(todoItem -> todoItem.dueDate().isEqual(LocalDate.now()) || todoItem.dueDate()
+                        .isAfter(LocalDate.now())).toList();
+        return ResponseEntity.status(HttpStatus.OK).body(upcoming);
     }
 
-    public void completeTodo(String username, int id){
-        userService.completeTodo(id, username);
+    public ResponseEntity<?> getCompletedCount(String username) {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("Completed Task count", repository.getCompletedCount(username));
+        return ResponseEntity.status(HttpStatus.OK).body(jsonObject);
+    }
+
+    public int getTotalTaskCount(String username) {
+        return repository.getAll(username).size();
+    }
+
+    public ResponseEntity<?> getProgress(String username) {
+        int completedTasks = repository.getCompletedCount(username);
+
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("Percentage", (double) Math.round(((double) completedTasks / (getTotalTaskCount(username) + completedTasks)) * 100));
+
+        return ResponseEntity.status(HttpStatus.OK).body(jsonObject);
+
     }
 
 }
